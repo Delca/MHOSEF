@@ -1,0 +1,74 @@
+<html>
+    <head>
+        <script src="data/armors.js"></script>
+        <script src="data/sets.js"></script>
+        <script src="data/charms.js"></script>
+        <script src="data/jewels.js"></script>
+        <script src="data/skills.js"></script>
+        <script src="data/weapons.js"></script>
+        <script src="js/glpk.js"></script>
+
+        <script src="js/main.js"></script>
+
+        <template id="type-ahead">
+            <div style="padding: 5px; display: inline-flex; flex-direction: column; position: relative;">
+                <div style="position: abolute;">
+                    <input id="input-element" type="text" value="" style="width: 100%">
+                </div>
+                <select id="select-element"></select>
+            </div>
+            <span id="span-element" style="display: none;">SELECTOR</span>
+        </template>
+
+        <template id="skill-level-selector">
+            <style>
+                #level-element {
+                    border: transparent solid 1px;
+                    transition: border-color .1s linear;
+                }
+                #level-element:invalid {
+                    border-color: #A26445;
+                }
+
+                a:hover {
+                    cursor: pointer;
+                }
+            </style>
+            <a id="remove-element" style="font-size: 2.5em; vertical-align: top;">🗑</a>
+            <type-ahead id="typeahead-element" type="skills"></type-ahead>
+            <input id="level-element" type="number" min="1" max="10" value="1">
+        </template>
+
+        <style>
+            #skills-container > skill-level-selector {
+                display: block;
+            }
+
+            a:hover {
+                cursor: pointer;
+            }
+        </style>
+    </head>
+    <body style="font: 12px Consolas; background-color: #323232; color: #B2B2B2;">
+        <h1 style="text-align: center;">Monster Hunter: Optimal Set Explorer and Finder</h1>
+        <div style="display: flex; flex-direction: row;">
+            <div style="display: flex;">
+                <div>
+                    <div styler="display: block;">
+                        <button id="search-button-element">Search</button>
+                        <button id="clear-all-button-element">Clear all</button>
+                        <span id="problem-state-element"></span>
+                    </div>
+            
+                    <div id="skills-container"></div>
+                    
+                    <a id="add-skill-button-element" style="font-size: 2.5em;">✚</a>
+                </div>
+            </div>
+
+            <div style="display: flex; padding: 5px; padding-top: 0;">
+                <span id="output-element" readonly="true"></span>
+            </div>
+        </div>
+    </body>
+</html>
