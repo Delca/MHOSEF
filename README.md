@@ -1,5 +1,5 @@
 # Monster Hunter: Optimal Set Explorer and Finder
-A small project to help Monster Hunter World players find the optimal armour set meeting specific conditions using the power of integer linear programming. 
+A small project to help Monster Hunter World players find the optimal armour set meeting specific conditions using the power of integer linear programming.
 
 You can check the demo at https://delca.github.io/MHOSEF/
 
@@ -10,8 +10,8 @@ You can check the demo at https://delca.github.io/MHOSEF/
 
 ## Missing features
 - Only uses data from Monster Hunter World
-- Does not take into account shared set bonuses between Alpha and Beta sets
-- Does not take into account special skills such as Xeno'jiiva Divinity, 
+- ~~Does not take into account shared set bonuses between Alpha and Beta sets~~
+- Does not take into account special skills such as Xeno'jiiva Divinity,
 - Does not use decorations to improve the set
 - Does not take the weapon into account
 - Does not take into account other stats such as defense, affinity, etc

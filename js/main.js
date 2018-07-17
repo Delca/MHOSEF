@@ -1,6 +1,21 @@
 ['armours', 'sets', 'charms', 'jewels', 'skills', 'weapons'].forEach(arrName => {
     window[arrName + 'Map'] = window[arrName].reduce((acc, item) => (acc[item.id] = item, acc), {});;
 });
+window.bonusesMap = sets.reduce((acc, set) => {
+    if(set.bonus) {
+        if (!acc[set.bonus.id]) {
+            acc[set.bonus.id] = JSON.parse(JSON.stringify(set.bonus));
+            acc[set.bonus.id].pieces = [];
+            acc[set.bonus.id].armourSets = [];
+        }
+
+        acc[set.bonus.id].armourSets.push(set.id);
+        acc[set.bonus.id].pieces.push(...set.pieces);
+    }
+
+    return acc;
+}, {});
+window.bonuses = Object.getOwnPropertyNames(window.bonusesMap).map(id => window.bonusesMap[id]);
 
 var BIG_M = 10000;
 
@@ -47,7 +62,7 @@ Problem.prototype.addConstraint = function (name, coefs, operator, threshold) {
             this.addConstraint(name + '_lower', coefs, '>=', threshold)[0]
         ];
     }
-    
+
     this.constraints.push({
         name,
         coefs,
@@ -98,7 +113,7 @@ Problem.prototype.solve = function () {
     var objective = glp_mip_obj_val(lp);
     var variables = {};
     var constraints = {};
-    
+
     for (var i = 1; i <= glp_get_num_cols(lp); ++i) {
         variables[glp_get_col_name(lp, i)] = glp_mip_col_val(lp, i);
     }
@@ -107,7 +122,7 @@ Problem.prototype.solve = function () {
     }
 
     return {
-        solved: status === 0 && (mipStatus === 5 || mipStatus === GLP_FEAS), 
+        solved: status === 0 && (mipStatus === 5 || mipStatus === GLP_FEAS),
         statusText: {
             0: {
                 [GLP_UNDEF]: 'Primal solution is undefined (GLP_UNDEF)',
@@ -125,7 +140,7 @@ Problem.prototype.solve = function () {
             [GLP_EMIPGAP]: 'MIP gap tolerance reached (GLP_MIPGAP)',
             [GLP_ETMLIM]: 'Time limit exceeded (GLP_ETMLIM)',
             [GLP_ESTOP]: 'Stopped by application (GLP_ESTOP)',
-            [undefined]: 'Undefined status'   
+            [undefined]: 'Undefined status'
         }[status],
         objective,
         variables,
@@ -140,46 +155,38 @@ function formatStats(equipmentIds) {
     var charm = charmsMap[charmId];
 
     var skills = {};
-    var potentialSets = {};
+    var potentialSetBonuses = {};
 
     armourPieces.forEach(a => {
         a.skills.forEach(s => skills[s.skill] = (skills[s.skill] || 0) + s.level);
-        potentialSets[a.armorSet.id] = true;
-    });
 
-    var potentialSetIds = Object.getOwnPropertyNames(potentialSets);
-    potentialSetIds.forEach(setId => {
-        var set = setsMap[setId];
-
-        potentialSets[setId] = armourPieceIds.filter(aId => set.pieces.some(a => a.id === aId)).length;
-
-        if (set.bonus) {
-            set.bonus.ranks.forEach(r => potentialSets[setId] >= r.pieces ? skills[r.skill.skill] = (skills[r.skill.skill] || 0) + r.skill.level : 0);
+        if (a.armorSet && setsMap[a.armorSet.id].bonus) {
+            potentialSetBonuses[setsMap[a.armorSet.id].bonus.id] = (potentialSetBonuses[setsMap[a.armorSet.id].bonus.id] || 0) + 1;
         }
     });
-    
+
+    var potentialSetBonusIds = Object.getOwnPropertyNames(potentialSetBonuses);
+    potentialSetBonusIds.forEach(bonusId => {
+        var bonus = bonusesMap[bonusId];
+
+        bonus.ranks.forEach(r => potentialSetBonuses[bonusId] >= r.pieces ? skills[r.skill.skill] = (skills[r.skill.skill] || 0) + r.skill.level : 0);
+    });
+
     if (charm) {
         charm.ranks[charm.ranks.length - 1].skills.forEach(s => skills[s.skill] = (skills[s.skill] || 0) + s.level);
     }
-    
+
     var skillIds = Object.getOwnPropertyNames(skills);
 
     var log = '';
     log += (armourPieces.length > 0 ? 'ITEMS\n' + armourPieces.map(a => a.name).join('\n') + '\n' : '');
     log += (charm ? charm.name + '\n' : '');
-    log += (potentialSetIds.length > 0 ? 'ARMOUR SETS\n' + potentialSetIds.map(setId => {
-        var set = setsMap[setId];
-        var setLog = set.name + ': ';
+    log += (potentialSetBonusIds.length > 0 ? 'ARMOUR SET BONUSES\n' + potentialSetBonusIds.map(bonusId => {
+        var bonus = bonusesMap[bonusId];
 
-        setLog += (
-            set.bonus ?
-            set.bonus.ranks.map((r, i) => `R${i+1}[${potentialSets[setId]}/${r.pieces}]`).join(' ') :
-            `[${potentialSets[setId]}/${set.pieces.length}]`
-        );
-
-        return setLog;
+        return bonus.name + ': ' + bonus.ranks.map((r, i) => `R${i+1}[${potentialSetBonuses[bonusId]}/${r.pieces}]`).join(' ');
     }).join('\n') + '\n' : '');
-    log += (skillIds.length > 0 ? 'SKILLs\n' + skillIds.map(id => `[${id}] ${skillsMap[id].name} : ${skills[id]}`).join('\n') : '');
+    log += (skillIds.length > 0 ? 'SKILLS\n' + skillIds.map(id => `[${id}] ${skillsMap[id].name} : ${skills[id]}`).join('\n') : '');
 
     return log;
 }
@@ -199,7 +206,7 @@ MHWProblem.prototype.requireSkill = function (id, level) {
 };
 MHWProblem.prototype.formatStats = function () {
     var solution = this.solution;
-    
+
     var armourPieceIds = Object
         .getOwnPropertyNames(solution.variables)
         .filter(varId => varId[0] === 'a' && solution.variables[varId])
@@ -208,7 +215,7 @@ MHWProblem.prototype.formatStats = function () {
         .getOwnPropertyNames(solution.variables)
         .filter(varId => varId[0] === 'c' && solution.variables[varId])
         .map(varId => parseInt(varId.slice(1), 10))[0];
-    
+
     return formatStats({
         armourPieceIds,
         charmId
@@ -227,38 +234,36 @@ MHWProblem.prototype.printSolution = function () {
         'Variables:', this.variables.length,
         'Constraints:', this.constraints.length
     );
-    
+
     console.log(this.formatStats());
 };
 MHWProblem.prototype.solve = function () {
     this.reset();
     var requiredSkillIds = this.requiredSkills.map(s => s.id);
-    
+
     // For now, filter on only the most immediately relevant items
-    var relevantSets = sets.filter(s => s.bonus && s.bonus.ranks.length && s.bonus.ranks.some(r => requiredSkillIds.indexOf(r.skill.skill) !== -1));
-    var relevantSetIds = relevantSets.reduce((acc, s) => (acc[s.id] = true, acc), {});
+    var relevantSetBonuses = bonuses.filter(b => b.ranks.length && b.ranks.some(r => requiredSkillIds.indexOf(r.skill.skill) !== -1));
+    var relevantSetIds = relevantSetBonuses.reduce((acc, b) => (b.armourSets.forEach(setId => acc[setId] = true), acc), {});
     var relevantArmours = armours.filter(a => relevantSetIds[a.armorSet.id] || a.skills.some(s => requiredSkillIds.indexOf(s.skill) !== -1));
     var relevantCharms = charms.filter(c => c.ranks[c.ranks.length - 1].skills.some(s => requiredSkillIds.indexOf(s.skill) !== -1));
     // var relevantJewels = jewels.filter(j => j.skills.some(s => requiredSkillIds.indexOf(s.skill) !== -1));
-
-    console.log(relevantSets);
 
     // Add binary variable to determine if each object will be worn
     relevantArmours.forEach(a => a.varId = this.addBinaryVariable('a' + a.id).name);
     relevantCharms.forEach(c => c.varId = this.addBinaryVariable('c' + c.id).name);
 
     // Add binary variables for each bonus rank of the relevant sets
-    relevantSets.forEach(s => s.varIds = s.bonus.ranks.map((r, i) => this.addBinaryVariable('sb' + s.id + 'r' + i).name));
+    relevantSetBonuses.forEach(b => b.varIds = b.ranks.map((r, i) => this.addBinaryVariable('b' + b.id + 'r' + i).name));
 
     // Prevent multiple items from being equipped to the same slot
     var armourPiecesPerType = {};
-    
+
     relevantArmours.forEach(a => {
         armourPiecesPerType[a.type] = armourPiecesPerType[a.type] || [];
         armourPiecesPerType[a.type].push(a);
     });
     armourPiecesPerType.charms = relevantCharms;
-    
+
     Object.getOwnPropertyNames(armourPiecesPerType).forEach(slot => {
         if (armourPiecesPerType[slot].length === 0) {
             return;
@@ -267,32 +272,32 @@ MHWProblem.prototype.solve = function () {
         var coefs = {};
 
         armourPiecesPerType[slot].forEach(a => coefs[a.varId] = 1);
-        
+
         this.addConstraint('single' + slot, coefs, '<=', 1);
     });
 
     // Force the activation of armour set variables when the required
     // number of set pieces is reached
-    relevantSets.forEach(s => s.bonus.ranks.forEach((r, i) => {
-        var bonusRankVarId = s.varIds[i];
+    relevantSetBonuses.forEach(b => b.ranks.forEach((r, i) => {
+        var bonusRankVarId = b.varIds[i];
         var coefsForceActivation = {};
         var coefsRestrictActivation = {};
-        
-        s.pieces.forEach(aCopy => {
+
+        b.pieces.forEach(aCopy => {
             coefsForceActivation[armoursMap[aCopy.id].varId] = 1;
             coefsRestrictActivation[armoursMap[aCopy.id].varId] = -1;
         });
 
         coefsForceActivation[bonusRankVarId] = -BIG_M;
         coefsRestrictActivation[bonusRankVarId] = BIG_M;
-        
+
         // sum(pieces) - M * bonusRank < requiredPiecesNum
         this.addConstraint(bonusRankVarId + 'force', coefsForceActivation, '<', r.pieces);
-        
+
         // M * bonusRank - sum(pieces) < M - requiredPiecesNum
         // (equivalent to sum(pieces) > requiredPiecesNum - M * (1 - bonusRank))
         this.addConstraint(bonusRankVarId + 'restrict', coefsRestrictActivation, '<', BIG_M - r.pieces);
-    }));    
+    }));
 
     // Force the solution to reach the required skill levels
     this.requiredSkills.forEach(rs => {
@@ -300,25 +305,25 @@ MHWProblem.prototype.solve = function () {
 
         relevantArmours.forEach(a => (a.skills.some(s => s.skill === rs.id ? coefs[a.varId] = s.level : 0)));
         relevantCharms.forEach(c => (c.ranks[c.ranks.length - 1].skills.some(s => s.skill === rs.id ? coefs[c.varId] = s.level : 0)));
-        relevantSets.forEach(s => s.bonus.ranks.forEach((r, i) => r.skill.skill === rs.id ? coefs[s.varIds[i]] = r.skill.level : 0 ));
-        
+        relevantSetBonuses.forEach(b => b.ranks.forEach((r, i) => r.skill.skill === rs.id ? coefs[b.varIds[i]] = r.skill.level : 0 ));
+
         this.addConstraint('skill' + rs.id, coefs, '>=', rs.level);
     });
 
     // Setup the cost function
     var slotsCoefs = {};
-    
+
     // Maximize the number of slots (for now, both used and available)
     var slotsNumberWeight = 1;
     relevantArmours.forEach(a => (a.slots.length > 0 ? slotsCoefs[a.varId] = (slotsCoefs[a.varId] || 0) + slotsNumberWeight * a.slots.length : 0));
-    
+
     // Minimize the number of equipment pieces used
     var equipmentQuantityWeight = 10;
     relevantArmours.forEach(a => slotsCoefs[a.varId] = (slotsCoefs[a.varId] || 0) - equipmentQuantityWeight);
     relevantCharms.forEach(c => slotsCoefs[c.varId] = (slotsCoefs[c.varId] || 0) - equipmentQuantityWeight);
 
     this.setCosts(slotsCoefs);
-    
+
     // Solve the problem
     console.log(this.toString());
     this.solution = Problem.prototype.solve.call(this);
@@ -339,15 +344,15 @@ function defineCustomElements() {
             super();
             let template = document.getElementById('type-ahead');
             let templateContent = template.content;
-    
+
             const shadowRoot = this
                 .attachShadow({mode: 'open'})
                 .appendChild(templateContent.cloneNode(true));
-            
+
             this.inputElement = this.shadowRoot.getElementById('input-element');
             this.selectElement = this.shadowRoot.getElementById('select-element');
             this.spanElement = this.shadowRoot.getElementById('span-element');
-            
+
             this.inputElement.addEventListener('keyup', e => {
                 console.log(e.code);
                 if (e.code === 'Enter' || e.code === 'ArrowDown') {
@@ -358,7 +363,7 @@ function defineCustomElements() {
                     this.selectElement.focus();
                     return;
                 }
-                
+
                 this.refreshOptions();
             });
             this.inputElement.addEventListener('focus', _ => {
@@ -367,7 +372,7 @@ function defineCustomElements() {
             });
             this.inputElement.addEventListener('blur', e => {
                 console.log('E', e.relatedTarget);
-                
+
                 if (e.relatedTarget !== this.selectElement) {
                     this.setOptions(window[this.type]);
                     this.selectElement.size = 1;
@@ -390,10 +395,10 @@ function defineCustomElements() {
 
             arr.forEach(o => {
                 var option = document.createElement('option');
-                
+
                 option.value = o.id;
                 option.innerText = o.name;
-                
+
                 if (o.disabled) {
                     option.setAttribute('disabled', true);
                 } else {
@@ -456,11 +461,11 @@ function defineCustomElements() {
             super();
             let template = document.getElementById('skill-level-selector');
             let templateContent = template.content;
-    
+
             const shadowRoot = this
                 .attachShadow({mode: 'open'})
                 .appendChild(templateContent.cloneNode(true));
-            
+
             this.typeaheadElement = this.shadowRoot.getElementById('typeahead-element');
             this.levelElement = this.shadowRoot.getElementById('level-element');
             this.removeElement = this.shadowRoot.getElementById('remove-element');
@@ -473,7 +478,7 @@ function defineCustomElements() {
             });
 
         }
-        
+
         get skill() {
             return {
                 id: parseInt(this.typeaheadElement.selectedValue, 10),
@@ -487,7 +492,7 @@ function searchForSet() {
     var skillList = document.getElementById('skills-container');
     var problemStateElement = document.getElementById('problem-state-element');
     var outputElement = document.getElementById('output-element');
-    
+
     var prob = new MHWProblem();
     window.prob = prob;
 
