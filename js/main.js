@@ -401,7 +401,8 @@ function getCurrentState() {
             .map(skillElement => ({
                 id: skillElement.skill.id,
                 level: skillElement.skill.level
-            }))
+            })),
+            autoSolve: document.getElementById('autosolve-checkbox-element').checked
     };
 }
 
@@ -414,7 +415,8 @@ function unserializeState(state) {
         return JSON.parse(state);
     } catch (e) {
         return {
-            skills: []
+            skills: [],
+            autoSolve: true
         };
     }
 }
@@ -434,6 +436,8 @@ function restoreLocalStorage() {
     if (state.skills.length === 0) {
         addSkillLevelSelector();
     }
+
+    document.getElementById('autosolve-checkbox-element').checked = state.autoSolve;
 }
 
 function defineCustomElements() {
@@ -641,7 +645,13 @@ function addSkillLevelSelector(id, level) {
     var skillList = document.getElementById('skills-container');
     var skillLevelSelector = document.createElement('skill-level-selector');
 
-    skillLevelSelector.addEventListener('change', _ => saveToLocalStorage());
+    skillLevelSelector.addEventListener('change', _ => {
+        saveToLocalStorage();
+
+        if (document.getElementById('autosolve-checkbox-element').checked) {
+            searchForSet();
+        }
+    });
 
     skillList.appendChild(skillLevelSelector);
 
@@ -655,12 +665,24 @@ function bindActionsToButtons() {
     var clearAllButton = document.getElementById('clear-all-button-element');
     var problemStateElement = document.getElementById('problem-state-element');
     var outputElement = document.getElementById('output-element');
+    var autoSolveCheckboxElement = document.getElementById('autosolve-checkbox-element');
 
     addSkillButton.addEventListener('click', _ => addSkillLevelSelector());
     searchButton.addEventListener('click', _ => searchForSet());
     clearAllButton.addEventListener('click', _ => {
         clearAll();
         addSkillButton.click();
+
+        if (document.getElementById('autosolve-checkbox-element').checked) {
+            searchForSet();
+        }
+    });
+    autoSolveCheckboxElement.addEventListener('change', e => {
+        if (e.target.checked) {
+            searchForSet();
+        }
+
+        saveToLocalStorage();
     });
 
     addSkillButton.click();
