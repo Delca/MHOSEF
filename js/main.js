@@ -389,14 +389,51 @@ function execute() {
     defineCustomElements();
     bindActionsToButtons();
 
-    var prob = new MHWProblem();
-    prob.requireSkill(15, 7);
-    prob.requireSkill(16, 3);
-    prob.requireSkill(44, 5);
-    prob.requireSkill(9, 5);
-    prob.requireSkill(26, 1);
+    restoreLocalStorage();
+}
 
-    prob.solve();
+function getCurrentState() {
+    var skillList = document.getElementById('skills-container');
+
+    return {
+        skills: Array
+            .from(skillList.children)
+            .map(skillElement => ({
+                id: skillElement.skill.id,
+                level: skillElement.skill.level
+            }))
+    };
+}
+
+function serializeCurrentState() {
+    return JSON.stringify(getCurrentState());
+}
+
+function unserializeState(state) {
+    try {
+        return JSON.parse(state);
+    } catch (e) {
+        return {
+            skills: []
+        };
+    }
+}
+
+function saveToLocalStorage() {
+    localStorage.setItem('currentState', serializeCurrentState());
+}
+
+function restoreLocalStorage() {
+    var state = unserializeState(localStorage.getItem('currentState'));
+
+    clearAll();
+    state.skills.forEach(skill => {
+        addSkillLevelSelector(skill.id, skill.level);
+    });
+
+    if (state.skills.length === 0) {
+        addSkillLevelSelector();
+    }
 }
 
 function defineCustomElements() {
@@ -537,8 +574,19 @@ function defineCustomElements() {
                 var skill = skillsMap[e.newValue];
 
                 this.levelElement.max = skill.ranks.length;
+
+                this.fireChangeEvent();
             });
 
+            this.levelElement.addEventListener('change', _ => this.fireChangeEvent());
+        }
+
+        fireChangeEvent() {
+            var event = new Event('change');
+
+            event.skill = this.skill;
+
+            this.dispatchEvent(event);
         }
 
         get skill() {
@@ -546,6 +594,18 @@ function defineCustomElements() {
                 id: parseInt(this.typeaheadElement.selectedValue, 10),
                 level: parseInt(this.levelElement.value, 10)
             };
+        }
+
+        set skill(value) {
+            if (value) {
+                if (value.id) {
+                    this.typeaheadElement.selectValue(value.id);
+                }
+                
+                if (value.level) {
+                    this.levelElement.value = value.level;
+                }
+            }
         }
     });
 }
@@ -567,6 +627,27 @@ function searchForSet() {
     outputElement.innerText = (prob.solution.solved ? prob.formatStats() : '');
 }
 
+function clearAll() {
+    var skillList = document.getElementById('skills-container');
+    var problemStateElement = document.getElementById('problem-state-element');
+    var outputElement = document.getElementById('output-element');
+    
+    skillList.innerHTML = '';
+    problemStateElement.innerText = '';
+    outputElement.innerText = '';
+}
+
+function addSkillLevelSelector(id, level) {
+    var skillList = document.getElementById('skills-container');
+    var skillLevelSelector = document.createElement('skill-level-selector');
+
+    skillLevelSelector.addEventListener('change', _ => saveToLocalStorage());
+
+    skillList.appendChild(skillLevelSelector);
+
+    skillLevelSelector.skill = {id, level};
+}
+
 function bindActionsToButtons() {
     var skillList = document.getElementById('skills-container');
     var addSkillButton = document.getElementById('add-skill-button-element');
@@ -575,12 +656,10 @@ function bindActionsToButtons() {
     var problemStateElement = document.getElementById('problem-state-element');
     var outputElement = document.getElementById('output-element');
 
-    addSkillButton.addEventListener('click', _ => skillList.appendChild(document.createElement('skill-level-selector')));
+    addSkillButton.addEventListener('click', _ => addSkillLevelSelector());
     searchButton.addEventListener('click', _ => searchForSet());
     clearAllButton.addEventListener('click', _ => {
-        skillList.innerHTML = '';
-        problemStateElement.innerText = '';
-        outputElement.innerText = '';
+        clearAll();
         addSkillButton.click();
     });
 
