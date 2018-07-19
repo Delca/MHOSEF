@@ -355,7 +355,7 @@ MHWProblem.prototype.solve = function () {
         relevantJewels.forEach(j => j.varIds[slotSizeIndex] !== undefined ? coefs[j.varIds[slotSizeIndex]] = -1 : 0);
 
         if (Object.getOwnPropertyNames(coefs).length > 0) {
-            //this.addConstraint('jewelsize' + slotSize, coefs, '>', 0);
+            this.addConstraint('jewelsize' + slotSize, coefs, '>=', 0);
         }
     });
 
