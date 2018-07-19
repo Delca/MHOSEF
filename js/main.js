@@ -16,6 +16,7 @@ window.bonusesMap = sets.reduce((acc, set) => {
     return acc;
 }, {});
 window.bonuses = Object.getOwnPropertyNames(window.bonusesMap).map(id => window.bonusesMap[id]);
+var slotSizes = [1, 2, 3];
 
 var BIG_M = 10000;
 
@@ -149,16 +150,28 @@ Problem.prototype.solve = function () {
 };
 
 function formatStats(equipmentIds) {
-    var { armourPieceIds, charmId } = equipmentIds;
+    var { armourPieceIds, charmId, jewelData } = equipmentIds;
 
     var armourPieces = (armourPieceIds || []).map(id => armoursMap[id]);
     var charm = charmsMap[charmId];
+    var equippedJewels = jewelData.reduce((acc, equippedJewel) => {
+        acc[equippedJewel[0]] = acc[equippedJewel[0]] || {
+            jewel: jewelsMap[equippedJewel[0]]
+        };
 
+        acc[equippedJewel[0]][equippedJewel[1]] = equippedJewel[2];
+
+        return acc;
+    }, {});
+    equippedJewels = Object.getOwnPropertyNames(equippedJewels).map(name => equippedJewels[name]);
+
+    var slots = {};
     var skills = {};
     var potentialSetBonuses = {};
 
     armourPieces.forEach(a => {
         a.skills.forEach(s => skills[s.skill] = (skills[s.skill] || 0) + s.level);
+        a.slots.forEach(s => slots[s.rank] = (slots[s.rank] || 0) + 1);
 
         if (a.armorSet && setsMap[a.armorSet.id].bonus) {
             potentialSetBonuses[setsMap[a.armorSet.id].bonus.id] = (potentialSetBonuses[setsMap[a.armorSet.id].bonus.id] || 0) + 1;
@@ -176,15 +189,27 @@ function formatStats(equipmentIds) {
         charm.ranks[charm.ranks.length - 1].skills.forEach(s => skills[s.skill] = (skills[s.skill] || 0) + s.level);
     }
 
+    equippedJewels.forEach(equippedJewel => {
+        slotSizes.forEach(sS => {
+            if (equippedJewel[sS]) {
+                equippedJewel.total = (equippedJewel.total || 0) + equippedJewel[sS];
+                equippedJewel.jewel.skills.forEach(s => skills[s.skill] = (skills[s.skill] || 0) + s.level * equippedJewel[sS]);
+            }
+        });
+    });
+
+    slots.total = slotSizes.reduce((acc, val) => acc + (slots[val] || 0), 0);
+
     var skillIds = Object.getOwnPropertyNames(skills);
 
     var log = '';
-    log += (armourPieces.length > 0 ? 'ITEMS\n' + armourPieces.map(a => a.name).join('\n') + '\n' : '');
-    log += (charm ? charm.name + '\n' : '');
+    log += (armourPieces.length > 0 ? 'ITEMS\n' + armourPieces.map(a => `[${a.id}] ${a.name}`).join('\n') + '\n' : '');
+    log += (charm ? `[${charmId}] ${charm.name}` + '\n' : '');
+    log += (jewelData.length > 0 ? 'JEWELS\n' + `Slots (${slots.total}): ${slotSizes.map(sS => `[${sS}]*${slots[sS] ? slots[sS] : 'X'}`).join(' ')}\n` + equippedJewels.map(j => `[${j.jewel.id}] ${j.jewel.name} * ${j.total}: ${slotSizes.map(sS => `[${sS}]*${j[sS] ? j[sS] : 'X'}`).join(' ')}`).join('\n') + '\n' : '');
     log += (potentialSetBonusIds.length > 0 ? 'ARMOUR SET BONUSES\n' + potentialSetBonusIds.map(bonusId => {
         var bonus = bonusesMap[bonusId];
 
-        return bonus.name + ': ' + bonus.ranks.map((r, i) => `R${i+1}[${potentialSetBonuses[bonusId]}/${r.pieces}]`).join(' ');
+        return `[${bonus.id}] ${bonus.name}: ${bonus.ranks.map((r, i) => `R${i+1}[${potentialSetBonuses[bonusId]}/${r.pieces}]`).join(' ')}`;
     }).join('\n') + '\n' : '');
     log += (skillIds.length > 0 ? 'SKILLS\n' + skillIds.map(id => `[${id}] ${skillsMap[id].name} : ${skills[id]}`).join('\n') : '');
 
@@ -215,12 +240,17 @@ MHWProblem.prototype.formatStats = function () {
         .getOwnPropertyNames(solution.variables)
         .filter(varId => varId[0] === 'c' && solution.variables[varId])
         .map(varId => parseInt(varId.slice(1), 10))[0];
+    var jewelData = Object
+        .getOwnPropertyNames(solution.variables)
+        .filter(varId => varId[0] === 'j' && solution.variables[varId])
+        .map(varId => varId.slice(1).split('s').map(s => parseInt(s, 10)).concat([solution.variables[varId]]));
 
     return formatStats({
         armourPieceIds,
-        charmId
+        charmId,
+        jewelData
     });
-}
+};
 MHWProblem.prototype.printSolution = function () {
     if (!this.solution) {
         console.error('Define and solve the problem before trying to print the solution');
@@ -242,10 +272,12 @@ MHWProblem.prototype.solve = function () {
     var requiredSkillIds = this.requiredSkills.map(s => s.id);
 
     // For now, filter on only the most immediately relevant items
+    // TODO: filter in armour pieces based on the smallest size of jewel that might be needed for the required skills
     var relevantSetBonuses = bonuses.filter(b => b.ranks.length && b.ranks.some(r => requiredSkillIds.indexOf(r.skill.skill) !== -1));
     var relevantSetIds = relevantSetBonuses.reduce((acc, b) => (b.armourSets.forEach(setId => acc[setId] = true), acc), {});
-    var relevantArmours = armours.filter(a => relevantSetIds[a.armorSet.id] || a.skills.some(s => requiredSkillIds.indexOf(s.skill) !== -1));
+    var relevantArmours = armours.filter(a => relevantSetIds[a.armorSet.id] || a.slots.length > 1 || a.skills.some(s => requiredSkillIds.indexOf(s.skill) !== -1));
     var relevantCharms = charms.filter(c => c.ranks[c.ranks.length - 1].skills.some(s => requiredSkillIds.indexOf(s.skill) !== -1));
+    var relevantJewels = jewels.filter(j => j.skills.some(s => requiredSkillIds.indexOf(s.skill) !== -1));
     // var relevantJewels = jewels.filter(j => j.skills.some(s => requiredSkillIds.indexOf(s.skill) !== -1));
 
     // Add binary variable to determine if each object will be worn
@@ -254,6 +286,9 @@ MHWProblem.prototype.solve = function () {
 
     // Add binary variables for each bonus rank of the relevant sets
     relevantSetBonuses.forEach(b => b.varIds = b.ranks.map((r, i) => this.addBinaryVariable('b' + b.id + 'r' + i).name));
+
+    // Add integer variables for the quantity of each jewel in each slot it can be fit into
+    relevantJewels.forEach(j => j.varIds = slotSizes.map(s => (j.slot <= s ? this.addIntegerVariable('j' + j.id + 's' + s).name : undefined)));
 
     // Prevent multiple items from being equipped to the same slot
     var armourPiecesPerType = {};
@@ -306,23 +341,41 @@ MHWProblem.prototype.solve = function () {
         relevantArmours.forEach(a => (a.skills.some(s => s.skill === rs.id ? coefs[a.varId] = s.level : 0)));
         relevantCharms.forEach(c => (c.ranks[c.ranks.length - 1].skills.some(s => s.skill === rs.id ? coefs[c.varId] = s.level : 0)));
         relevantSetBonuses.forEach(b => b.ranks.forEach((r, i) => r.skill.skill === rs.id ? coefs[b.varIds[i]] = r.skill.level : 0 ));
+        relevantJewels.forEach(j => (j.skills.some(s => s.skill === rs.id ? (j.varIds.forEach(jewelSlotVarId => (jewelSlotVarId !== undefined ? coefs[jewelSlotVarId] = s.level : 0))) : 0)));
 
         this.addConstraint('skill' + rs.id, coefs, '>=', rs.level);
     });
 
+    // Force the number of used jewels of each size to be less than or equal to the number of slots
+    // provided by the equipped armour pieces
+    slotSizes.forEach((slotSize, slotSizeIndex) => {
+        var coefs = {};
+
+        relevantArmours.forEach(a => a.slots.forEach(s => s.rank === slotSize ? coefs[a.varId] = (coefs[a.varId] || 0) + 1 : 0));
+        relevantJewels.forEach(j => j.varIds[slotSizeIndex] !== undefined ? coefs[j.varIds[slotSizeIndex]] = -1 : 0);
+
+        if (Object.getOwnPropertyNames(coefs).length > 0) {
+            //this.addConstraint('jewelsize' + slotSize, coefs, '>', 0);
+        }
+    });
+
     // Setup the cost function
-    var slotsCoefs = {};
+    var costsCoefs = {};
 
     // Maximize the number of slots (for now, both used and available)
     var slotsNumberWeight = 1;
-    relevantArmours.forEach(a => (a.slots.length > 0 ? slotsCoefs[a.varId] = (slotsCoefs[a.varId] || 0) + slotsNumberWeight * a.slots.length : 0));
+    relevantArmours.forEach(a => (a.slots.length > 0 ? costsCoefs[a.varId] = (costsCoefs[a.varId] || 0) + slotsNumberWeight * a.slots.length : 0));
 
     // Minimize the number of equipment pieces used
     var equipmentQuantityWeight = 10;
-    relevantArmours.forEach(a => slotsCoefs[a.varId] = (slotsCoefs[a.varId] || 0) - equipmentQuantityWeight);
-    relevantCharms.forEach(c => slotsCoefs[c.varId] = (slotsCoefs[c.varId] || 0) - equipmentQuantityWeight);
+    relevantArmours.forEach(a => costsCoefs[a.varId] = (costsCoefs[a.varId] || 0) - equipmentQuantityWeight);
+    relevantCharms.forEach(c => costsCoefs[c.varId] = (costsCoefs[c.varId] || 0) - equipmentQuantityWeight);
 
-    this.setCosts(slotsCoefs);
+    // Minimize the quantity of jewels used
+    var jewelsQuantityWeight = 5;
+    relevantJewels.forEach(j => j.varIds.forEach((jewelSlotVarId, slotSizeIndex) => jewelSlotVarId !== undefined ? costsCoefs[jewelSlotVarId] = -jewelsQuantityWeight*slotSizes[slotSizeIndex] : 0));
+
+    this.setCosts(costsCoefs);
 
     // Solve the problem
     console.log(this.toString());
@@ -335,6 +388,15 @@ MHWProblem.prototype.solve = function () {
 function execute() {
     defineCustomElements();
     bindActionsToButtons();
+
+    var prob = new MHWProblem();
+    prob.requireSkill(15, 7);
+    prob.requireSkill(16, 3);
+    prob.requireSkill(44, 5);
+    prob.requireSkill(9, 5);
+    prob.requireSkill(26, 1);
+
+    prob.solve();
 }
 
 function defineCustomElements() {
