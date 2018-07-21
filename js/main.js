@@ -229,6 +229,9 @@ MHWProblem.prototype.requireSkill = function (id, level) {
         level
     });
 };
+MHWProblem.prototype.selectWeapon = function (id) {
+    this.weapon = weaponsMap[id];
+};
 MHWProblem.prototype.formatStats = function () {
     var solution = this.solution;
 
@@ -350,12 +353,17 @@ MHWProblem.prototype.solve = function () {
     // provided by the equipped armour pieces
     slotSizes.forEach((slotSize, slotSizeIndex) => {
         var coefs = {};
+        var threshold = 0;
 
         relevantArmours.forEach(a => a.slots.forEach(s => s.rank === slotSize ? coefs[a.varId] = (coefs[a.varId] || 0) + 1 : 0));
         relevantJewels.forEach(j => j.varIds[slotSizeIndex] !== undefined ? coefs[j.varIds[slotSizeIndex]] = -1 : 0);
 
+        if (this.weapon) {
+            threshold = this.weapon.slots.filter(s => s.rank === slotSize).length;
+        }
+
         if (Object.getOwnPropertyNames(coefs).length > 0) {
-            this.addConstraint('jewelsize' + slotSize, coefs, '>=', 0);
+            this.addConstraint('jewelsize' + slotSize, coefs, '>=', -threshold);
         }
     });
 
@@ -394,6 +402,7 @@ function execute() {
 
 function getCurrentState() {
     var skillList = document.getElementById('skills-container');
+    var weaponElement = document.getElementById('weapon-selector-element');
 
     return {
         skills: Array
@@ -402,7 +411,8 @@ function getCurrentState() {
                 id: skillElement.skill.id,
                 level: skillElement.skill.level
             })),
-            autoSolve: document.getElementById('autosolve-checkbox-element').checked
+        autoSolve: document.getElementById('autosolve-checkbox-element').checked,
+        weapon: weaponElement.selectedValue
     };
 }
 
@@ -427,6 +437,7 @@ function saveToLocalStorage() {
 
 function restoreLocalStorage() {
     var state = unserializeState(localStorage.getItem('currentState'));
+    var weaponElement = document.getElementById('weapon-selector-element');
 
     clearAll();
     state.skills.forEach(skill => {
@@ -438,6 +449,8 @@ function restoreLocalStorage() {
     }
 
     document.getElementById('autosolve-checkbox-element').checked = state.autoSolve;
+
+    weaponElement.selectValue(state.weapon || 0);
 }
 
 function defineCustomElements() {
@@ -618,11 +631,13 @@ function searchForSet() {
     var skillList = document.getElementById('skills-container');
     var problemStateElement = document.getElementById('problem-state-element');
     var outputElement = document.getElementById('output-element');
+    var weaponElement = document.getElementById('weapon-selector-element');
 
     var prob = new MHWProblem();
     window.prob = prob;
 
     Array.from(skillList.children).forEach(skillElement => prob.requireSkill(skillElement.skill.id, skillElement.skill.level));
+    prob.selectWeapon(weaponElement.selectedValue);
 
     //glp_set_print_func(console.log);
     prob.solve();
@@ -666,6 +681,7 @@ function bindActionsToButtons() {
     var problemStateElement = document.getElementById('problem-state-element');
     var outputElement = document.getElementById('output-element');
     var autoSolveCheckboxElement = document.getElementById('autosolve-checkbox-element');
+    var weaponElement = document.getElementById('weapon-selector-element');
 
     addSkillButton.addEventListener('click', _ => addSkillLevelSelector());
     searchButton.addEventListener('click', _ => searchForSet());
@@ -682,6 +698,9 @@ function bindActionsToButtons() {
             searchForSet();
         }
 
+        saveToLocalStorage();
+    });
+    weaponElement.addEventListener('change', _ => {
         saveToLocalStorage();
     });
 
