@@ -270,7 +270,7 @@ MHWProblem.prototype.printSolution = function () {
 
     console.log(this.formatStats());
 };
-MHWProblem.prototype.solve = function () {
+MHWProblem.prototype.solve = function (forbiddenSolutions) {
     this.reset();
     var requiredSkillIds = this.requiredSkills.map(s => s.id);
 
@@ -366,6 +366,18 @@ MHWProblem.prototype.solve = function () {
             this.addConstraint('jewelsize' + slotSize, coefs, '>=', -threshold);
         }
     });
+
+    // If forbidden solutions were given, prevent the specified item sets
+    // from being selected together
+    if (Array.isArray(forbiddenSolutions)) {
+        forbiddenSolutions.forEach((forbiddenSet, i) => {
+            var coefs = {};
+
+            forbiddenSet.forEach(varId => coefs[varId] = 1);
+
+            this.addConstraint('forbidden' + i, coefs, '<', forbiddenSet.length - 1);
+        });
+    }
 
     // Setup the cost function
     var costsCoefs = {};
@@ -640,10 +652,30 @@ function searchForSet() {
     prob.selectWeapon(weaponElement.selectedValue);
 
     //glp_set_print_func(console.log);
-    prob.solve();
+    var iteCount = 10;
+    var solutions = [];
+    var forbiddenSolutions = [];
+
+    for (var i = 0; i < iteCount; ++i){
+        prob.solve(forbiddenSolutions);
+
+        if (prob.solution.solved) {
+            solutions.push(prob.formatStats() + '\n');
+        } else {
+            continue;
+        }
+
+        forbiddenSolutions.push(
+            Object
+                .getOwnPropertyNames(prob.solution.variables)
+                .filter(varId => prob.solution.variables[varId] && (varId[0] === 'a' || varId[0] === 'c'))
+        );
+    }
+
 
     problemStateElement.innerText = prob.solution.statusText;
     outputElement.innerText = (prob.solution.solved ? prob.formatStats() : '');
+    outputElement.innerText = solutions.join('\n');
 }
 
 function clearAll() {
